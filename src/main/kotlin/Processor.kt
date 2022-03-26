@@ -89,6 +89,10 @@ class Processor constructor(private val candidateWords: Set<String>) {
                 WordInformation((0..n).associateWith { candidates.lookup(it).intersect(other.candidates.lookup(it)) },
                         letters.associateWith { counts.lookup(it).intersection(other.counts.lookup(it)) }
                 )
+
+        // Get all the compatible words that can be matched by this WordInformation.
+        fun compatibleWords(): Set<String> =
+                candidateWords.filter(this::isCompatible).toSet()
     }
 
     // Given a guess, translate it into a WordInformation given what information it provides us.
