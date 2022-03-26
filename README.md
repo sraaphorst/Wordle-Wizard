@@ -1,4 +1,4 @@
-# WORDLE WHACKER
+# Wordle Wizard
 
 This is just some experimentation to play around with solving Worldle puzzles.
 * Python is used to (try to) retrieve the top 100 books from Project Gutenberg as of 2022-03-24.
