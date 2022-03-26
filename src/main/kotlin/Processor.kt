@@ -12,6 +12,7 @@ typealias Frequencies = Map<Int, LetterCounts>
 // 1. Avoid having to handle null when we know they will succeed and just return safe values.
 // 2. Intersect IntRanges, which should produce another (possibly empty) IntRange.
 //    The default IntRange.intersect method produces a Set<Int>.
+// 3. Check that a string is uppercase or bork.
 private fun <A,B> Map<A, Map<B, Int>>.lookup(a: A, b: B): Int =
         (this[a] ?: emptyMap())[b] ?: 0
 private fun <A, B> Map<A, Set<B>>.lookup(a: A): Set<B> =
@@ -24,11 +25,15 @@ private fun <A> Map<A, IntRange>.lookup(a: A): IntRange =
         this[a] ?: IntRange.EMPTY
 private fun IntRange.intersection(other: IntRange): IntRange =
        max(first, other.first)..min(last, other.last)
+private fun String.requireUpperCaseWord(msg: () -> String): Boolean {
+        require(all { it.isLetter() && it.isUpperCase() }, msg)
+        return true
+}
 
 
-class Processor constructor(private val candidateWords: Set<String>) {
+class Processor constructor(val candidateWords: List<String>) {
     companion object {
-        const val letters = "abcdefghijklmnopqrstuvwxyz"
+        val letters = 'A'..'Z'
 
         // I prefer to think in the Wordle colours.
         // BLACK: Not in.
@@ -44,6 +49,7 @@ class Processor constructor(private val candidateWords: Set<String>) {
     // Make sure that the candidateWords are all the same length or this does not make sense.
     init {
         require(candidateWords.isNotEmpty()) { "Cannot work with an empty set of candidate words." }
+        require(candidateWords.all { it.requireUpperCaseWord { "Illegal characters found in candidate word $it." } })
         val sz = candidateWords.fold(Int.MAX_VALUE) { acc, word -> min(acc, word.length) }
         require(sz > 0) { "Empty string found in candidate words." }
         require(candidateWords.all { it.length == sz }) { "All candidate words must have the same size." }
@@ -54,20 +60,29 @@ class Processor constructor(private val candidateWords: Set<String>) {
 
     // Set up the frequency map. This just determines, from the list of candidate words, how often each letter appears
     // in each position.
-    val frequencies: Frequencies = (0 until n).associateWith {
-        pos -> letters.map { ch -> ch to candidateWords.count { word -> word[pos] == ch } }.toMap()
+    val frequencies: Frequencies = (0 until n).associateWith { pos ->
+        letters.associateWith { ch -> candidateWords.count { word -> word[pos] == ch } }
     }
 
     // Contains known information about the word currently being guessed.
-    inner class WordInformation(private val candidates: Map<Int, Set<Char>> = (0..n).associateWith { letters.toSet() },
-                                private val counts: Map<Char, IntRange> = letters.associateWith { 0 .. n }) {
+    inner class WordInformation constructor(private val candidates: Map<Int, Set<Char>> = (0..n).associateWith { letters.toSet() },
+                                            private val counts: Map<Char, IntRange> = letters.associateWith { 0 .. n }) {
+        init {
+            require(counts.keys.all { it.isLetter() && it.isUpperCase() }) {
+                "Illegal characters found in WordInformation: ${counts.keys.filterNot { it.isLetter() && it.isUpperCase() }}."
+            }
+            require(candidates.values.flatten().all { it.isLetter() && it.isUpperCase() }) {
+                "Illegal characters found in WordInformation: ${candidates.values.flatten().filterNot { it.isLetter() && it.isUpperCase() }}."
+            }
+        }
         // Determine if the word given is compatible with the information here.
         // This will come in particularly useful if hard mode is on.
         fun isCompatible(word: String): Boolean {
+            word.requireUpperCaseWord { "isCompatible passed a word with illegal characters: $word" }
             require(word.length == n) { "The word $word has illegal length ${word.length}, should be $n." }
 
             // Make sure the letters are suitable candidates for each position.
-            return word.withIndex().all { (idx, chr) -> chr in candidates.lookup(idx) } &&
+            return word.withIndex().all { (idx, chr) -> chr in candidateWords[idx] } &&
                     // Make sure the count of each letter is n the IntRange for that letter.
                     letters.all { ch -> word.count { it == ch } in counts.lookup(ch) }
         }
@@ -76,6 +91,7 @@ class Processor constructor(private val candidateWords: Set<String>) {
         fun isWord(): String? = when {
             (candidates.all { it.value.size == 1 }) -> {
                 val word = candidates.map { it.value.first() }.toString()
+                require(word === word.uppercase()) { "WordInformation represents non-uppercase word $word." }
                 require(word in candidateWords) { "WordInformation represents word $word, which is not a valid candidate." }
                 word
             }
@@ -104,6 +120,10 @@ class Processor constructor(private val candidateWords: Set<String>) {
     // 3. E_E__ where both are grey, which means there are at least two Es, but both are explicitly not in the position
     //    specified.
     fun toWordInformation(info: List<Pair<Char, Status>>): WordInformation {
+        require(info.all { it.first.isUpperCase() }) {
+            "Illegal characters found in toWordInformation: ${info.filter { it.first.isLowerCase() }}"
+        }
+
         // Calculate the minimum number of times a letter can appear based on the information provided.
         // This is the sum of the times it appears in green and grey.
         val minFrequencies = letters.associateWith { ch -> info.count {
@@ -150,6 +170,7 @@ class Processor constructor(private val candidateWords: Set<String>) {
     // This is just the sum of the frequencies of each letter at each position.
     // TODO: THIS MAY BE VERY WRONG.
     fun rankWord(word: String): Int {
+        word.requireUpperCaseWord { "Illegal characters found in rankWord: $word" }
         require(word.length == n) { "Word $word must be of length $n." }
         return word.withIndex().sumOf { (idx, ch) -> frequencies.lookup(idx, ch) }
     }
@@ -158,7 +179,7 @@ class Processor constructor(private val candidateWords: Set<String>) {
 fun main() {
     // The list of candidate words for consideration.
     val candidateWords = object {}.javaClass.getResource("/full_list_nyt.txt")!!
-            .readText().trim().split("\n").toSet()
+            .readText().trim().split("\n")
 
     // Run the basic processing for now.
     val p = Processor(candidateWords)
