@@ -5,6 +5,7 @@ import java.lang.Integer.min
 
 
 // Convenience type aliases.
+typealias Word = String
 typealias LetterCounts = Map<Char, Int>
 typealias Frequencies = Map<Int, LetterCounts>
 
@@ -25,14 +26,17 @@ private fun <A> Map<A, IntRange>.lookup(a: A): IntRange =
         this[a] ?: IntRange.EMPTY
 private fun IntRange.intersection(other: IntRange): IntRange =
        max(first, other.first)..min(last, other.last)
-private fun String.requireUpperCaseWord(msg: () -> String): Boolean {
+private fun Word.requireUpperCaseWord(msg: () -> String): Boolean {
         require(all { it.isLetter() && it.isUpperCase() }, msg)
         return true
 }
 
 
-class Processor constructor(val candidateWords: List<String>) {
+class Processor constructor(val candidateWords: List<Word>) {
     companion object {
+        fun fromCandidates(filename: String): Processor =
+                Processor(object {}.javaClass.getResource(filename)!!.readText().trim().split("\n"))
+
         val letters = 'A'..'Z'
 
         // I prefer to think in the Wordle colours.
@@ -77,7 +81,7 @@ class Processor constructor(val candidateWords: List<String>) {
         }
         // Determine if the word given is compatible with the information here.
         // This will come in particularly useful if hard mode is on.
-        fun isCompatible(word: String): Boolean {
+        fun isCompatible(word: Word): Boolean {
             word.requireUpperCaseWord { "isCompatible passed a word with illegal characters: $word" }
             require(word.length == n) { "The word $word has illegal length ${word.length}, should be $n." }
 
@@ -88,7 +92,7 @@ class Processor constructor(val candidateWords: List<String>) {
         }
 
         // Determine if this word information specifies a unique word, and if so, return that word.
-        fun isWord(): String? = when {
+        fun isWord(): Word? = when {
             (candidates.all { it.value.size == 1 }) -> {
                 val word = candidates.map { it.value.first() }.toString()
                 word.requireUpperCaseWord { "WordInformation represents non-uppercase word $word." }
@@ -107,7 +111,7 @@ class Processor constructor(val candidateWords: List<String>) {
                 )
 
         // Get all the compatible words that can be matched by this WordInformation.
-        fun compatibleWords(): Set<String> =
+        fun compatibleWords(): Set<Word> =
                 candidateWords.filter(this::isCompatible).toSet()
     }
 
@@ -169,22 +173,18 @@ class Processor constructor(val candidateWords: List<String>) {
     // Rank a word's score.
     // This is just the sum of the frequencies of each letter at each position.
     // TODO: THIS MAY BE VERY WRONG.
-    fun rankWord(word: String): Int {
+    fun rankWord(word: Word): Int {
         word.requireUpperCaseWord { "Illegal characters found in rankWord: $word" }
         require(word.length == n) { "Word $word must be of length $n." }
         return word.withIndex().sumOf { (idx, ch) -> frequencies.lookup(idx, ch) }
     }
 }
 
-fun main() {
-    // The list of candidate words for consideration.
-    val candidateWords = object {}.javaClass.getResource("/full_list_nyt.txt")!!
-            .readText().trim().split("\n")
-
-    // Run the basic processing for now.
-    val p = Processor(candidateWords)
+fun main(args: Array<String>) {
+    // Create the processor.
+    val p = Processor.fromCandidates(args.getOrNull(0) ?: "full_list_nyt.txt")
     println(p.frequencies)
-    val candidateMap = candidateWords.associateBy {
+    val candidateMap = p.candidateWords.associateBy {
         p.rankWord(it)
     }.toSortedMap(Comparator.reverseOrder())
     println(candidateMap)
