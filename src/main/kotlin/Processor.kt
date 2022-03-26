@@ -181,6 +181,7 @@ class Processor constructor(val candidateWords: List<Word>) {
 }
 
 fun main(args: Array<String>) {
+    require(args.size in setOf(0, 1)) { "Permitted parameters: answers.txt, answers_nyt.txt, full_list.txt, default=full_list_nyt.txt" }
     // Create the processor.
     val p = Processor.fromCandidates(args.getOrNull(0) ?: "full_list_nyt.txt")
     println(p.frequencies)
