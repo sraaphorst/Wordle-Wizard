@@ -91,7 +91,7 @@ class Processor constructor(val candidateWords: List<String>) {
         fun isWord(): String? = when {
             (candidates.all { it.value.size == 1 }) -> {
                 val word = candidates.map { it.value.first() }.toString()
-                require(word === word.uppercase()) { "WordInformation represents non-uppercase word $word." }
+                word.requireUpperCaseWord { "WordInformation represents non-uppercase word $word." }
                 require(word in candidateWords) { "WordInformation represents word $word, which is not a valid candidate." }
                 word
             }
