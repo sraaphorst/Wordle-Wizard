@@ -3,14 +3,12 @@ package wordlewizard
 // By Sebastian Raaphorst, 2022.
 
 import kotlinx.coroutines.*
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.lang.Integer.max
 import java.lang.Integer.min
-import java.net.URL
 import kotlin.Comparator
 import kotlin.math.log2
 import kotlin.system.measureTimeMillis
@@ -19,7 +17,8 @@ import kotlin.system.measureTimeMillis
 typealias Word = String
 typealias LetterCounts = Map<Char, Int>
 typealias Frequencies = Map<Int, LetterCounts>
-typealias ExpectedValues = Map<Word, Double>
+typealias Entropy = Pair<Word, Double>
+typealias EntropyMap = Map<Word, Double>
 
 // Convenience functions to:
 // 1. Avoid having to handle null when we know they will succeed and just return safe values.
@@ -218,9 +217,10 @@ class Processor constructor(val candidateWords: List<Word>) {
         return WordInformation(candidates, counts, setOf(word))
     }
 
-    // The expected information that a word gives us. Note that this may be a very intensive computation as it
-    // has to try all 3^n patterns that a word can return. (When n=5, this is 243.)
-    fun expectedInfo(word: Word): Pair<Word, Double> {
+    // The expected information - or entropy - that a word gives us. Note that this may be a very intensive
+    // computation as it has to try all 3^n patterns that a word can return and see which words satisfy that pattern.
+    // (When n=5, this is 243, and when using the full list, that is nearly 13,000 words to filter on.)
+    fun entropy(word: Word): Entropy {
         word.requireUpperCaseWord { "Illegal characters found in rankWord: $word" }
         require(word.length == n) { "Word $word must be of length $n." }
         return word to allPatterns.sumOf {
@@ -232,15 +232,15 @@ class Processor constructor(val candidateWords: List<Word>) {
 
 // Serialize the expected values of a word for a processor.
 // Writes to the resources directory but this hardly seems like the ideal way to do so.
-fun serialize(p: Processor, fileArg: String): ExpectedValues = runBlocking(Dispatchers.Default) {
-    val infoMap: ExpectedValues = p.candidateWords.map { async { p.expectedInfo(it) } }.awaitAll().toMap()
+fun serialize(p: Processor, fileArg: String): EntropyMap = runBlocking(Dispatchers.Default) {
+    val infoMap: EntropyMap = p.candidateWords.map { async { p.entropy(it) } }.awaitAll().toMap()
     val json = Json.encodeToString(infoMap)
     File("src/main/resources/$fileArg.ser").writeText(json)
     return@runBlocking infoMap
 }
 
 // Deserialize the expected values from a file in the resources directory.
-fun deserialize(fileArg: String): ExpectedValues =
+fun deserialize(fileArg: String): EntropyMap =
     Json.decodeFromString(object{}.javaClass.getResource("/$fileArg.ser")!!.readText())
 
 

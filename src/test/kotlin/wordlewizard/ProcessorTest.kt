@@ -12,7 +12,7 @@ private fun assertAlmostEquals(expected: Double, actual: Double, threshhold: Dou
 
 class ProcessorTest {
     companion object {
-        val p = Processor.fromCandidates("full_list_nyt.txt")
+        val p = Processor.fromCandidates("full_list_nyt")
         private const val WEARY = "WEARY"
         val weary_info1 = p.toWordInformation(WEARY, listOf(GREY, GREEN, GREEN, YELLOW, GREY))
         val weary_info2 = p.toWordInformation(WEARY, listOf(GREEN, GREY, GREY, YELLOW, GREEN))
@@ -51,6 +51,6 @@ class ProcessorTest {
 
     @Test
     fun `WEARY has an expected information value of 4 point 90 bits`() {
-        assertAlmostEquals(4.90, p.expectedInfo(WEARY), 5e-3)
+        assertAlmostEquals(4.90, p.entropy(WEARY).second, 5e-3)
     }
 }
