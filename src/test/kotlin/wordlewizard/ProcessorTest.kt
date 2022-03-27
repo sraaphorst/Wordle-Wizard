@@ -1,7 +1,13 @@
 package wordlewizard
 
 import org.junit.jupiter.api.Test
+import kotlin.math.abs
 import kotlin.test.assertEquals
+import kotlin.test.asserter
+
+private fun assertAlmostEquals(expected: Double, actual: Double, threshhold: Double = 1e-5, message: String? = null) {
+    asserter.assertTrue(message, abs(expected - actual) < threshhold)
+}
 
 class ProcessorTest {
     companion object {
@@ -45,5 +51,15 @@ class ProcessorTest {
     @Test
     fun `WEARY with pattern XXXXX has 1844 candidates`() {
         assertEquals(1844, weary_info3.compatibleWords().size)
+    }
+
+    @Test
+    fun `WEARY with pattern GXXYG has probability 3 over 12972`() {
+        assertEquals(3.0/12_966, weary_info2.p())
+    }
+
+    @Test
+    fun `WEARY with pattern GXXYG has information approx 12 point 08`() {
+        assertAlmostEquals(12.08, weary_info2.info(), 5e-3)
     }
 }

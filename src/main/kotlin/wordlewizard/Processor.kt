@@ -2,6 +2,7 @@ package wordlewizard// By Sebastian Raaphorst, 2022.
 
 import java.lang.Integer.max
 import java.lang.Integer.min
+import kotlin.math.log2
 
 
 // Convenience type aliases.
@@ -119,6 +120,18 @@ class Processor constructor(val candidateWords: List<Word>) {
         // Exclude things that have already been guessed.
         fun compatibleWords(): Set<Word> =
                 candidateWords.filterNot(guesses::contains).filter(this::isCompatible).toSet()
+
+        // Calculate the probability associated with this WordInformation,
+        // i.e. # candidate words / total number words.
+        fun p(): Double =
+                compatibleWords().size.toDouble() / candidateWords.size
+
+        // Calculate the information associated with the WordInformation,
+        // i.e. -log_2(p).
+        // This is because p = (1/2)^info, i.e. the number of times we cut the space in half.
+        // Rearranges to info = -log_2(p).
+        fun info(): Double =
+                - log2(p())
     }
 
     // Given a guess, translate it into a WordInformation given what information it provides us.
