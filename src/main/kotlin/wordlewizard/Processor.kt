@@ -1,14 +1,25 @@
-package wordlewizard// By Sebastian Raaphorst, 2022.
+package wordlewizard
 
+// By Sebastian Raaphorst, 2022.
+
+import kotlinx.coroutines.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import java.io.File
 import java.lang.Integer.max
 import java.lang.Integer.min
+import java.net.URL
+import kotlin.Comparator
 import kotlin.math.log2
-
+import kotlin.system.measureTimeMillis
 
 // Convenience type aliases.
 typealias Word = String
 typealias LetterCounts = Map<Char, Int>
 typealias Frequencies = Map<Int, LetterCounts>
+typealias ExpectedValues = Map<Word, Double>
 
 // Convenience functions to:
 // 1. Avoid having to handle null when we know they will succeed and just return safe values.
@@ -19,6 +30,8 @@ private fun <A,B> Map<A, Map<B, Int>>.lookup(a: A, b: B): Int =
         (this[a] ?: emptyMap())[b] ?: 0
 private fun <A, B> Map<A, Set<B>>.lookup(a: A): Set<B> =
         this[a] ?: emptySet()
+private fun <A> Map<A, Double>.lookup(a: A): Double =
+        this[a] ?: 0.0
 private fun <A> Map<A, Int>.lookup(a: A): Int =
         this[a] ?: 0
 private fun <A> Map<A, Boolean>.lookup(a : A): Boolean =
@@ -32,11 +45,10 @@ private fun Word.requireUpperCaseWord(msg: () -> String): Boolean {
         return true
 }
 
-
 class Processor constructor(val candidateWords: List<Word>) {
     companion object {
-        fun fromCandidates(filename: String): Processor =
-                Processor(object {}.javaClass.getResource("/$filename")!!.readText().trim().split("\n"))
+        fun fromCandidates(fileArg: String): Processor =
+                Processor(object{}.javaClass.getResource("/$fileArg.txt")!!.readText().trim().split("\n"))
 
         val letters = 'A'..'Z'
 
@@ -69,6 +81,19 @@ class Processor constructor(val candidateWords: List<Word>) {
         letters.associateWith { ch -> candidateWords.count { word -> word[pos] == ch } }
     }
 
+    // Precompute all the patterns that can be returned for a word.
+    // Not tail recursive but this shouldn't matter since n will presumably be small.
+    private fun createAllPatterns(): Set<List<Status>> {
+        fun aux(curr: List<Status> = emptyList()): Set<List<Status>> = when (curr.size) {
+            n -> setOf(curr)
+            else -> Status.values().flatMap { aux(curr + listOf(it)) }.toSet()
+        }
+        return aux()
+    }
+
+    // All possible patterns that can be returned for a guess.
+    val allPatterns = createAllPatterns()
+
     // Contains known information about the words that have been guessed.
     inner class WordInformation constructor(private val candidates: Map<Int, Set<Char>> = (0..n).associateWith { letters.toSet() },
                                             private val counts: Map<Char, IntRange> = letters.associateWith { 0 .. n },
@@ -87,7 +112,7 @@ class Processor constructor(val candidateWords: List<Word>) {
 
         // Determine if the word given is compatible with the information here.
         // This will come in particularly useful if hard mode is on.
-        fun isCompatible(word: Word): Boolean {
+        private fun isCompatible(word: Word): Boolean {
             word.requireUpperCaseWord { "isCompatible passed a word with illegal characters: $word" }
             require(word.length == n) { "The word $word has illegal length ${word.length}, should be $n." }
 
@@ -130,8 +155,10 @@ class Processor constructor(val candidateWords: List<Word>) {
         // i.e. -log_2(p).
         // This is because p = (1/2)^info, i.e. the number of times we cut the space in half.
         // Rearranges to info = -log_2(p).
-        fun info(): Double =
-                - log2(p())
+        fun info(): Double {
+            val prob = p()
+            return if (prob == 0.0) 0.0 else -log2(prob)
+        }
     }
 
     // Given a guess, translate it into a WordInformation given what information it provides us.
@@ -142,14 +169,12 @@ class Processor constructor(val candidateWords: List<Word>) {
     //    there could be more.
     // 3. E_E__ where both are yellow, which means there are at least two Es, but both are explicitly not in the
     //    position specified.
-    fun toWordInformation(info: List<Pair<Char, Status>>): WordInformation {
-        require(info.all { it.first.isUpperCase() }) {
-            "Illegal characters found in toWordInformation: ${info.filter { it.first.isLowerCase() }}"
-        }
-        require(info.size == n) { "Feedback must be of length $n, was of length ${info.size}." }
+    fun toWordInformation(word: String, pattern: List<Status>): WordInformation {
+        word.requireUpperCaseWord { "Illegal characters found in toWordInformation: $word" }
+        require(word.length == n) { "The word $word has illegal length ${word.length}, should be $n." }
+        require(pattern.size == n) { "The feedback $pattern has illegal length ${pattern.size}, should be $n." }
 
-        // Extract the original word.
-        val wordGuessed = String(info.map(Pair<Char, Status>::first).toCharArray())
+        val info = word.toCharArray().zip(pattern)
 
         // Calculate the minimum number of times a letter can appear based on the information provided.
         // This is the sum of the times it appears in green and yellow.
@@ -190,27 +215,53 @@ class Processor constructor(val candidateWords: List<Word>) {
         // Combine the min / max frequencies into IntRanges.
         val counts = letters.associateWith { minFrequencies.lookup(it)..maxFrequencies.lookup(it) }
 
-        return WordInformation(candidates, counts, setOf(wordGuessed))
+        return WordInformation(candidates, counts, setOf(word))
     }
 
-    // Rank a word's score.
-    // This is just the sum of the frequencies of each letter at each position.
-    // TODO: THIS MAY BE VERY WRONG.
-    fun rankWord(word: Word): Int {
+    // The expected information that a word gives us. Note that this may be a very intensive computation as it
+    // has to try all 3^n patterns that a word can return. (When n=5, this is 243.)
+    fun expectedInfo(word: Word): Pair<Word, Double> {
         word.requireUpperCaseWord { "Illegal characters found in rankWord: $word" }
         require(word.length == n) { "Word $word must be of length $n." }
-        return word.withIndex().sumOf { (idx, ch) -> frequencies.lookup(idx, ch) }
+        return word to allPatterns.sumOf {
+            val wi = toWordInformation(word, it)
+            wi.p() * wi.info()
+        }
     }
 }
 
+// Serialize the expected values of a word for a processor.
+// Writes to the resources directory but this hardly seems like the ideal way to do so.
+fun serialize(p: Processor, fileArg: String): ExpectedValues = runBlocking(Dispatchers.Default) {
+    val infoMap: ExpectedValues = p.candidateWords.map { async { p.expectedInfo(it) } }.awaitAll().toMap()
+    val json = Json.encodeToString(infoMap)
+    File("src/main/resources/$fileArg.ser").writeText(json)
+    return@runBlocking infoMap
+}
+
+// Deserialize the expected values from a file in the resources directory.
+fun deserialize(fileArg: String): ExpectedValues =
+    Json.decodeFromString(object{}.javaClass.getResource("/$fileArg.ser")!!.readText())
+
+
 fun main(args: Array<String>) {
-    require(args.size in setOf(0, 1)) { "Permitted parameters: answers.txt, answers_nyt.txt, full_list.txt, default=full_list_nyt.txt" }
+    // Get the base name of the resource to use.
+    require(args.size in setOf(0, 1)) { "Permitted parameters: answers, answers_nyt, full_list, default=full_list_nyt" }
+    val fileArg = args.getOrNull(0) ?: "full_list_nyt"
 
     // Create the processor.
-    val p = Processor.fromCandidates(args.getOrNull(0) ?: "full_list_nyt.txt")
-    println(p.frequencies)
-    val candidateMap = p.candidateWords.associateBy {
-        p.rankWord(it)
-    }.toSortedMap(Comparator.reverseOrder())
-    println(candidateMap)
+    val p = Processor.fromCandidates(fileArg)
+
+    // Calculate the data and serialize it.
+    val timeInMillis = measureTimeMillis {
+        val infoMap = serialize(p, fileArg)
+
+        // Print the word with the highest expected value.
+        infoMap.toSortedMap(Comparator { o1, o2 -> when {
+            infoMap.lookup(o1) == infoMap.lookup(o2) -> 0
+            infoMap.lookup(o1) > infoMap.lookup(o2) -> -1
+            else -> 1
+        } } ).toList().take(100).forEach { (word, exp) -> println("$word -> $exp") }
+    }
+    println("Time taken: ${timeInMillis / 1000.0} s.")
 }

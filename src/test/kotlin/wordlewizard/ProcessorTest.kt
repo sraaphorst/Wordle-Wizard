@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.asserter
+import wordlewizard.Processor.Companion.Status.*
 
 private fun assertAlmostEquals(expected: Double, actual: Double, threshhold: Double = 1e-5, message: String? = null) {
     asserter.assertTrue(message, abs(expected - actual) < threshhold)
@@ -12,30 +13,15 @@ private fun assertAlmostEquals(expected: Double, actual: Double, threshhold: Dou
 class ProcessorTest {
     companion object {
         val p = Processor.fromCandidates("full_list_nyt.txt")
+        private const val WEARY = "WEARY"
+        val weary_info1 = p.toWordInformation(WEARY, listOf(GREY, GREEN, GREEN, YELLOW, GREY))
+        val weary_info2 = p.toWordInformation(WEARY, listOf(GREEN, GREY, GREY, YELLOW, GREEN))
+        val weary_info3 = p.toWordInformation(WEARY, listOf(GREY, GREY, GREY, GREY, GREY))
+    }
 
-        val weary_info1 = p.toWordInformation(listOf(
-                'W' to Processor.Companion.Status.GREY,
-                'E' to Processor.Companion.Status.GREEN,
-                'A' to Processor.Companion.Status.GREEN,
-                'R' to Processor.Companion.Status.YELLOW,
-                'Y' to Processor.Companion.Status.GREY
-        ))
-
-        val weary_info2 = p.toWordInformation(listOf(
-                'W' to Processor.Companion.Status.GREEN,
-                'E' to Processor.Companion.Status.GREY,
-                'A' to Processor.Companion.Status.GREY,
-                'R' to Processor.Companion.Status.YELLOW,
-                'Y' to Processor.Companion.Status.GREEN
-        ))
-
-        val weary_info3 = p.toWordInformation(listOf(
-                'W' to Processor.Companion.Status.GREY,
-                'E' to Processor.Companion.Status.GREY,
-                'A' to Processor.Companion.Status.GREY,
-                'R' to Processor.Companion.Status.GREY,
-                'Y' to Processor.Companion.Status.GREY
-        ))
+    @Test
+    fun `processor has 243 patterns`() {
+        assertEquals(243, p.allPatterns.size)
     }
 
     @Test
@@ -61,5 +47,10 @@ class ProcessorTest {
     @Test
     fun `WEARY with pattern GXXYG has information approx 12 point 08`() {
         assertAlmostEquals(12.08, weary_info2.info(), 5e-3)
+    }
+
+    @Test
+    fun `WEARY has an expected information value of 4 point 90 bits`() {
+        assertAlmostEquals(4.90, p.expectedInfo(WEARY), 5e-3)
     }
 }
