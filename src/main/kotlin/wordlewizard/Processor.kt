@@ -1,4 +1,4 @@
-// By Sebastian Raaphorst, 2022.
+package wordlewizard// By Sebastian Raaphorst, 2022.
 
 import java.lang.Integer.max
 import java.lang.Integer.min
@@ -35,7 +35,7 @@ private fun Word.requireUpperCaseWord(msg: () -> String): Boolean {
 class Processor constructor(val candidateWords: List<Word>) {
     companion object {
         fun fromCandidates(filename: String): Processor =
-                Processor(object {}.javaClass.getResource(filename)!!.readText().trim().split("\n"))
+                Processor(object {}.javaClass.getResource("/$filename")!!.readText().trim().split("\n"))
 
         val letters = 'A'..'Z'
 
